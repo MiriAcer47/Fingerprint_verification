@@ -1,0 +1,139 @@
+"""img1 = cv2.imread("assets/101_1.tif")
+img2 = cv2.imread("assets/101_3.tif")
+
+
+if img1 is None or img2 is None:
+    print("Błąd wczytywania obrazów.")
+    exit()
+
+
+# Preprocessing obrazów
+preprocessed1 = preprocess(img1)
+preprocessed2 = preprocess(img2)
+
+
+# Tworzenie maski przed wyrównaniem
+mask1 = create_full_white_mask(img1)
+mask2 = create_full_white_mask(img2)
+
+
+# Wyrównanie obrazów
+aligned1, aligned_mask1 = align_images(preprocessed1, preprocessed2, mask1)
+
+# Tworzenie maski wspólnego obszaru
+common_area_mask = cv2.bitwise_and(aligned_mask1, mask2)
+
+# Cienkowanie
+thinned1 = thinning(aligned1)
+thinned2 = thinning(preprocessed2)
+
+
+# Ekstrakcja punktów charakterystycznych
+minutiae1 = filter_false_minutiae_by_type(minutiae_extraction(thinned1, aligned_mask1))
+minutiae2 = filter_false_minutiae_by_type(minutiae_extraction(thinned2, mask2))
+
+# Wyświetlanie liczby punktów charakterystycznych
+print(f"Liczba punktów charakterystycznych w odcisku 1: {len(minutiae1)}")
+print(f"Liczba punktów charakterystycznych w odcisku 2: {len(minutiae2)}")
+
+print("Pierwsze 5 punktów charakterystycznych w odcisku 1:")
+for point in minutiae1[:5]:
+    print(f"Współrzędne: {point}")
+
+print("Pierwsze 5 punktów charakterystycznych w odcisku 2:")
+for point in minutiae2[:5]:
+    print(f"Współrzędne: {point}")
+
+# Porównanie odcisków palców z uwzględnieniem wspólnego obszaru
+score = compare_minutiae(minutiae1, minutiae2, common_area_mask)
+
+# Wyświetlenie wyniku porównania
+print(
+    f"Liczba dopasowanych punktów: {int(score * max(len(minutiae1), len(minutiae2)))}"
+)
+print(f"Wskaźnik dopasowania: {score:.2f}")
+
+if score > 0.2:
+    print("Odciski palców pasują do siebie.")
+else:
+    print("Odciski palców nie pasują do siebie.")
+
+
+# Zapis punktów charakterystycznych do plików JSON
+save_minutiae(minutiae1, "minucje1.json")
+save_minutiae(minutiae2, "minucje2.json")
+
+print(
+    "Punkty charakterystyczne zostały zapisane do plików 'minucje1.json' i 'minucje2.json'."
+)
+
+# Wczytanie punktów charakterystycznych z plików JSON
+loaded_minutiae1 = load_minutiae("minucje1.json")
+loaded_minutiae2 = load_minutiae("minucje2.json")
+
+# Wyświetlenie liczby punktów charakterystycznych
+print(f"Liczba punktów charakterystycznych w odcisku 1: {len(loaded_minutiae1)}")
+print(f"Liczba punktów charakterystycznych w odcisku 2: {len(loaded_minutiae2)}")
+
+print(
+    f"Liczba punktów końcowych w odcisku 1: {sum(1 for m in loaded_minutiae1 if m['type'] == 'ending')}"
+)
+print(
+    f"Liczba rozwidleń w odcisku 1: {sum(1 for m in loaded_minutiae1 if m['type'] == 'bifurcation')}"
+)
+print(
+    f"Liczba punktów końcowych w odcisku 2: {sum(1 for m in loaded_minutiae2 if m['type'] == 'ending')}"
+)
+print(
+    f"Liczba rozwidleń w odcisku 2: {sum(1 for m in loaded_minutiae2 if m['type'] == 'bifurcation')}"
+)
+
+
+# Porównanie odcisków palców z uwzględnieniem wspólnego obszaru
+score = compare_minutiae(loaded_minutiae1, loaded_minutiae2, common_area_mask)
+
+
+# Wyświetlenie wyniku porównania
+print(
+    f"Liczba dopasowanych punktów: {int(score * max(len(loaded_minutiae1), len(loaded_minutiae2)))}"
+)
+print(f"Wskaźnik dopasowania: {score:.2f}")
+
+if score > 0.2:
+    print("Odciski palców pasują do siebie.")
+else:
+    print("Odciski palców nie pasują do siebie.")
+
+# Rysowanie minucji
+display_img1 = cv2.cvtColor(thinned1, cv2.COLOR_GRAY2BGR)
+display_img2 = cv2.cvtColor(thinned2, cv2.COLOR_GRAY2BGR)
+preprocessed_display1 = cv2.cvtColor(preprocessed1, cv2.COLOR_GRAY2BGR)
+preprocessed_display2 = cv2.cvtColor(preprocessed2, cv2.COLOR_GRAY2BGR)
+original_display1 = img1.copy()
+original_display2 = img2.copy()
+
+display_img1 = draw_minutiae(display_img1, minutiae1)
+display_img2 = draw_minutiae(display_img2, minutiae2)
+preprocessed_display1 = draw_minutiae(preprocessed_display1, minutiae1)
+preprocessed_display2 = draw_minutiae(preprocessed_display2, minutiae2)
+
+images_row1 = [original_display1, preprocessed_display1, display_img1]
+titles_row1 = ["ORYGINAL 1", "PREPROCESS 1", "Minucje 1"]
+
+images_row2 = [original_display2, preprocessed_display2, display_img2]
+titles_row2 = ["ORYGINAL 2", "PREPROCESS 2", "Minucje 2"]
+
+# Przygotowanie obrazów
+prepared_images_row1 = prepare_images(images_row1, titles_row1)
+prepared_images_row2 = prepare_images(images_row2, titles_row2)
+
+# Tworzenie mozaiki
+row1 = np.hstack(prepared_images_row1)
+row2 = np.hstack(prepared_images_row2)
+full_mosaic = np.vstack([row1, row2])
+
+# Wyświetlanie mozaiki
+cv2.imshow("Porównanie odcisków palców", full_mosaic)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
+"""
