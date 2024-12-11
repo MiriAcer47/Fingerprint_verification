@@ -6,7 +6,7 @@ from scipy.signal import wiener
 import os
 
 
-
+#przetwarzanie obrazu
 def preprocess(img):
     # konwersja do skali szarości
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -23,18 +23,15 @@ def preprocess(img):
     img_filtered = cv2.medianBlur(img_norm, 5)
 
     # progowanie - konwersja na obraz binarny
-    img_thresh = cv2.adaptiveThreshold(
-        img_filtered, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, 5
-    )
+    img_thresh = cv2.adaptiveThreshold(img_filtered, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                       cv2.THRESH_BINARY, 31, 5)
 
     # operacje morfologiczne - otwarcie
     kernel = np.ones((3, 3), np.uint8)
     img_morph = cv2.morphologyEx(img_thresh, cv2.MORPH_OPEN, kernel)
 
     # tworzenie mozaiki do wyświetlania obrazów
-    img_mosaic = create_mosaic(
-        [img_gray, img_norm, img_gabor, img_morph], ["Gray", "CLAHE", "Gabor", "Morph"]
-    )
+    img_mosaic = create_mosaic([img_gray, img_norm, img_gabor, img_morph], ["Gray", "CLAHE", "Gabor", "Morph"])
 
     # wyświetlenie mozaiki
     cv2.imshow("Etapy przetwarzania obrazu", img_mosaic)
@@ -126,9 +123,86 @@ def create_full_white_mask(img, margin=10):
     mask[:, w - margin : w] = 0
     return mask
 
-
-# ekstrakcja minucji
+#ekstrakcja minucji
 def minutiae_extraction(img, mask):
+    minutiae = []
+    img = img / 255.0  # Normalizacja obrazu do zakresu [0, 1]
+    rows, cols = img.shape
+
+    # Funkcja pomocnicza: zlicza przejścia między 8 sąsiadami
+    def crossing_number(r, c):
+        # Sąsiedzi w kolejności zgodnej z ruchem wskazówek zegara (lub przeciwnym, byle spójnie)
+        # Kolejność (N1 do N8):
+        # N1: (r-1, c-1)
+        # N2: (r-1, c)
+        # N3: (r-1, c+1)
+        # N4: (r, c+1)
+        # N5: (r+1, c+1)
+        # N6: (r+1, c)
+        # N7: (r+1, c-1)
+        # N8: (r, c-1)
+        nbr_coords = [
+            (r - 1, c - 1),
+            (r - 1, c),
+            (r - 1, c + 1),
+            (r, c + 1),
+            (r + 1, c + 1),
+            (r + 1, c),
+            (r + 1, c - 1),
+            (r, c - 1)
+        ]
+
+        p = [img[nr, nc] for nr, nc in nbr_coords]
+
+        # Obliczamy sumę |p(k) - p(k+1)| z p(9) = p(1)
+        transitions = 0
+        for i in range(8):
+            transitions += abs(p[i] - p[(i + 1) % 8])
+
+        CN = transitions / 2.0
+        return CN, p
+
+    # Funkcja sprawdzająca, czy piksel jest rozsądnym punktem grzbietu (nie odosobniony)
+    def is_valid_ridge_point(r, c):
+        nbrs = img[r - 1:r + 2, c - 1:c + 2]
+        return np.sum(nbrs) - img[r, c] > 0
+
+    # Dodatkowa funkcja sprawdzająca, czy CN=3 jest faktycznie rozwidleniem
+
+    def is_true_bifurcation(p):
+        groups = 0
+        prev = 0
+        for i in range(8):
+            curr = p[i]
+            next_p = p[(i + 1) % 8]
+            if curr == 1 and prev == 0:
+                groups += 1
+            prev = curr
+
+        return (groups == 3)
+
+    for i in range(1, rows - 1):
+        for j in range(1, cols - 1):
+            if img[i][j] == 1 and mask[i][j] == 255:
+                if not is_valid_ridge_point(i, j):
+                    continue
+
+                CN, p = crossing_number(i, j)
+
+                # Zakończenie linii -> CN = 1
+                if CN == 1:
+                    angle = compute_orientation(img, j, i)
+                    minutiae.append({'x': j, 'y': i, 'type': 'ending', 'angle': angle})
+                # Rozwidlenie linii -> CN = 3
+                elif CN == 3:
+                    # Dodatkowa weryfikacja czy to faktycznie rozwidlenie
+                    if is_true_bifurcation(p):
+                        angle = compute_orientation(img, j, i)
+                        minutiae.append({'x': j, 'y': i, 'type': 'bifurcation', 'angle': angle})
+
+    return minutiae
+# ekstrakcja minucji
+def minutiae_extraction_zero(img, mask):
     minutiae = []
     img = img / 255  # Normalizacja obrazu do zakresu [0, 1]
     rows, cols = img.shape
@@ -240,32 +314,29 @@ def load_minutiae(filename):
 
 # Filtruje fałszywe minutie na podstawie ich typu i odpowiednich progów odległości.
 def filter_false_minutiae_by_type(minutiae, distance_thresholds=None):
+
     if distance_thresholds is None:
         # Ustawienie domyślnych progów
-        distance_thresholds = {"ending": 5, "bifurcation": 5}
+        distance_thresholds = {'ending': 3, 'bifurcation': 5} #domyslne - 5, 5
 
     filtered_minutiae = []
     minutiae_by_type = {}
 
     # Grupowanie minutii według typu
     for m in minutiae:
-        m_type = m["type"]
+        m_type = m['type']
         if m_type not in minutiae_by_type:
             minutiae_by_type[m_type] = []
         minutiae_by_type[m_type].append(m)
 
     # Filtrowanie dla każdego typu
     for m_type, m_list in minutiae_by_type.items():
-        threshold = distance_thresholds.get(
-            m_type, 5
-        )  # Domyślny próg, jeśli typ nie jest określony
+        threshold = distance_thresholds.get(m_type, 5)  # Domyślny próg, jeśli typ nie jest określony
         for i, m1 in enumerate(m_list):
             is_false = False
             for j, m2 in enumerate(m_list):
                 if i != j:
-                    distance = math.sqrt(
-                        (m1["x"] - m2["x"]) ** 2 + (m1["y"] - m2["y"]) ** 2
-                    )
+                    distance = math.sqrt((m1['x'] - m2['x']) ** 2 + (m1['y'] - m2['y']) ** 2)
                     if distance < threshold:
                         is_false = True
                         break
